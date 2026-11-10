@@ -939,6 +939,10 @@ void wScreenRestoreState(WScreen * scr)
 	}
 
 	wWorkspaceRestoreState(scr);
+	/* WigNix: workspaces 1 to 10 always exist (Super+1 to Super+0), whatever
+	 * the saved state says. */
+	while (scr->workspace_count < 10)
+		wWorkspaceNew(scr);
 	wScreenUpdateUsableArea(scr);
 }
 
