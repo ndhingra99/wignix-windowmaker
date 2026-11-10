@@ -1365,6 +1365,10 @@ static Bool handleWindowType(WWindow *wwin, Atom type, int *layer)
 		wwin->client_flags.skip_switchpanel = 1;
 		wwin->client_flags.dont_move_off = 1;
 		wwin->flags.net_skip_pager = 1;
+		/* WigNix: panels such as the menu bar never take focus from the
+		 * application they describe and get no icon in the icon row. */
+		wwin->client_flags.no_focusable = 1;
+		wwin->client_flags.no_appicon = 1;
 	} else if (type == net_wm_window_type_toolbar ||
 	           type == net_wm_window_type_menu) {
 		wwin->client_flags.no_resizable = 1;
