@@ -199,6 +199,17 @@ static WIcon *icon_create_core(WScreen *scr, int coord_x, int coord_y)
 	return icon;
 }
 
+/* WigNix: icons in the bottom row shrink when the row fills the screen. */
+void wIconResize(WIcon *icon, int size)
+{
+	if (icon->core->width == size && icon->core->height == size)
+		return;
+	icon->core->width = size;
+	icon->core->height = size;
+	XResizeWindow(dpy, icon->core->window, size, size);
+	update_icon_pixmap(icon);
+}
+
 void wIconDestroy(WIcon *icon)
 {
 	WCoreWindow *core = icon->core;
@@ -884,12 +895,6 @@ static void miniwindowMouseDown(WObjDescriptor *desc, XEvent *event)
 {
 	WIcon *icon = desc->parent;
 	WWindow *wwin = icon->owner;
-	XEvent ev;
-	int x = wwin->icon_x, y = wwin->icon_y;
-	int dx = event->xbutton.x, dy = event->xbutton.y;
-	int grabbed = 0;
-	int clickButton = event->xbutton.button;
-	Bool hasMoved = False;
 
 	if (WCHECK_STATE(WSTATE_MODAL))
 		return;
@@ -921,60 +926,10 @@ static void miniwindowMouseDown(WObjDescriptor *desc, XEvent *event)
 		return;
 	}
 
-	if (XGrabPointer(dpy, icon->core->window, False, ButtonMotionMask
-			 | ButtonReleaseMask | ButtonPressMask, GrabModeAsync,
-			 GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
-	}
-	while (1) {
-		WMMaskEvent(dpy, PointerMotionMask | ButtonReleaseMask | ButtonPressMask
-			    | ButtonMotionMask | ExposureMask, &ev);
-		switch (ev.type) {
-		case Expose:
-			WMHandleEvent(&ev);
-			break;
-
-		case MotionNotify:
-			hasMoved = True;
-			if (!grabbed) {
-				if (abs(dx - ev.xmotion.x) >= MOVE_THRESHOLD
-				    || abs(dy - ev.xmotion.y) >= MOVE_THRESHOLD) {
-					XChangeActivePointerGrab(dpy, ButtonMotionMask
-								 | ButtonReleaseMask | ButtonPressMask,
-								 wPreferences.cursor[WCUR_MOVE], CurrentTime);
-					grabbed = 1;
-				} else {
-					break;
-				}
-			}
-			x = ev.xmotion.x_root - dx;
-			y = ev.xmotion.y_root - dy;
-			XMoveWindow(dpy, icon->core->window, x, y);
-			break;
-
-		case ButtonPress:
-			break;
-
-		case ButtonRelease:
-			if (ev.xbutton.button != clickButton)
-				break;
-
-			if (wwin->icon_x != x || wwin->icon_y != y)
-				wwin->flags.icon_moved = 1;
-
-			XMoveWindow(dpy, icon->core->window, x, y);
-
-			wwin->icon_x = x;
-			wwin->icon_y = y;
-			XUngrabPointer(dpy, CurrentTime);
-
-			if (wPreferences.auto_arrange_icons)
-				wArrangeIcons(wwin->screen_ptr, True);
-			if (wPreferences.single_click && !hasMoved)
-				miniwindowDblClick(desc, event);
-			return;
-
-		}
-	}
+	/* WigNix: miniwindows sit in the bottom row and do not move; a click
+	 * brings the window back. */
+	if (event->xbutton.button == Button1 && !(event->xbutton.state & (ShiftMask | MOD_MASK)))
+		wDeiconifyWindow(wwin);
 }
 
 void set_icon_image_from_database(WIcon *icon, const char *wm_instance, const char *wm_class, const char *command)

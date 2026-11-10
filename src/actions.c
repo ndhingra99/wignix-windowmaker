@@ -2044,7 +2044,6 @@ void wRefreshDesktop(WScreen *scr)
 
 void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 {
-	WWindow *wwin;
 
 	int head;
 	const int heads = wXineramaHeads(scr);
@@ -2124,30 +2123,19 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 	? vars[head].yo + vars[head].ys*(vars[head].pi*isize) \
 	: vars[head].yo + vars[head].ys*(vars[head].si*isize))
 
-	/* WigNix: application icons form one row centred along the bottom of
-	 * each head, with no gaps. When the row would overrun the head the
-	 * plain icons shrink; dockapps keep the window size they were born with. */
+	/* WigNix: dockapps and miniaturized windows share one row centred along
+	 * the bottom of each head, with no gaps. Dockapps keep the window size
+	 * they were born with; the miniwindows shrink when the row would overrun
+	 * the head. */
 	{
-		int count[heads], total[heads], size[heads], xpos[heads];
+		int fixed[heads], count[heads], size[heads], xpos[heads];
 		WAppIcon *ai, *oldest;
-		int w, nx, ny;
+		WWindow *mw, *first;
+		int w, nx, ny, avail;
 
 		for (head = 0; head < heads; ++head) {
+			fixed[head] = 0;
 			count[head] = 0;
-			total[head] = 0;
-		}
-		for (ai = scr->app_icon_list; ai; ai = ai->next) {
-			if (ai->docked)
-				continue;
-			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
-			count[head]++;
-		}
-		for (head = 0; head < heads; ++head) {
-			size[head] = isize;
-			if (count[head] > 0 && count[head] * isize > vars[head].sx2 - vars[head].sx1)
-				size[head] = (vars[head].sx2 - vars[head].sx1) / count[head];
-			if (size[head] < 16)
-				size[head] = 16;
 		}
 		/* the list grows at its head, so walk it backwards: oldest icon leftmost */
 		oldest = scr->app_icon_list;
@@ -2157,10 +2145,30 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 			if (ai->docked)
 				continue;
 			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
-			total[head] += (ai->icon->icon_win != None) ? isize : size[head];
+			if (ai->icon->icon_win != None)
+				fixed[head] += isize;
+			else
+				count[head]++;
 		}
-		for (head = 0; head < heads; ++head)
-			xpos[head] = vars[head].sx1 + (vars[head].sx2 - vars[head].sx1 - total[head]) / 2;
+		/* miniwindows, oldest first (the window list is newest first) */
+		first = scr->focused_window;
+		while (first && first->prev)
+			first = first->prev;
+#define WIGNIX_MINI_SHOWN(w) ((w)->icon && (w)->flags.miniaturized && !(w)->flags.hidden && \
+	((w)->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w) || wPreferences.sticky_icons))
+		for (mw = first; mw; mw = mw->next)
+			if (WIGNIX_MINI_SHOWN(mw))
+				count[wGetHeadForWindow(mw)]++;
+		for (head = 0; head < heads; ++head) {
+			avail = vars[head].sx2 - vars[head].sx1 - fixed[head];
+			size[head] = isize;
+			if (count[head] > 0 && count[head] * isize > avail)
+				size[head] = avail / count[head];
+			if (size[head] < 16)
+				size[head] = 16;
+			xpos[head] = vars[head].sx1
+				+ (vars[head].sx2 - vars[head].sx1 - fixed[head] - count[head] * size[head]) / 2;
+		}
 		for (ai = oldest; ai; ai = ai->prev) {
 			if (ai->docked)
 				continue;
@@ -2178,39 +2186,24 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 			wAppIconMove(ai, nx, ny);
 			xpos[head] += w;
 		}
-	}
-
-	/* arrange miniwindows */
-	wwin = scr->focused_window;
-	/* reverse them to avoid unnecessarily shuffling */
-	while (wwin && wwin->prev)
-		wwin = wwin->prev;
-
-	while (wwin) {
-		if (wwin->icon && wwin->flags.miniaturized && !wwin->flags.hidden &&
-		    (wwin->frame->workspace == scr->current_workspace ||
-		     IS_OMNIPRESENT(wwin) || wPreferences.sticky_icons)) {
-
-			head = wGetHeadForWindow(wwin);
-
-			if (arrangeAll || !wwin->flags.icon_moved) {
-				if (wwin->icon_x != X || wwin->icon_y != Y)
-					move_window(wwin->icon->core->window, wwin->icon_x, wwin->icon_y, X, Y);
-
-				wwin->icon_x = X;
-				wwin->icon_y = Y;
-
-				vars[head].pi++;
-				if (vars[head].pi >= vars[head].pf) {
-					vars[head].pi = 0;
-					vars[head].si++;
-				}
+		for (mw = first; mw; mw = mw->next) {
+			if (!WIGNIX_MINI_SHOWN(mw)) {
+				if (arrangeAll)
+					mw->flags.icon_moved = 0;
+				continue;
 			}
+			head = wGetHeadForWindow(mw);
+			wIconResize(mw->icon, size[head]);
+			nx = xpos[head];
+			ny = vars[head].sy2 - size[head];
+			if (mw->icon_x != nx || mw->icon_y != ny)
+				move_window(mw->icon->core->window, mw->icon_x, mw->icon_y, nx, ny);
+			mw->icon_x = nx;
+			mw->icon_y = ny;
+			mw->flags.icon_moved = 0;
+			xpos[head] += size[head];
 		}
-		if (arrangeAll)
-			wwin->flags.icon_moved = 0;
-		/* we reversed the order, so we use next */
-		wwin = wwin->next;
+#undef WIGNIX_MINI_SHOWN
 	}
 
 	wfree(vars);

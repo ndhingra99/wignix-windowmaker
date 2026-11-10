@@ -146,6 +146,16 @@ WAppIcon *wAppIconCreateForDock(WScreen *scr, const char *command, const char *w
 
 void create_appicon_for_application(WApplication *wapp, WWindow *wwin)
 {
+	/* WigNix: only dockapps (an icon window in the withdrawn state) get an
+	 * icon in the row; ordinary applications show there only while a window
+	 * of theirs is miniaturized. */
+	if (wapp->main_window_desc) {
+		XWMHints *h = wapp->main_window_desc->wm_hints;
+
+		if (!(h && (h->flags & IconWindowHint) && (h->flags & StateHint)
+		      && h->initial_state == WithdrawnState))
+			wapp->main_window_desc->client_flags.no_appicon = 1;
+	}
 	/* Try to create an icon from the dock or clip */
 	create_appicon_from_dock(wwin, wapp, wapp->main_window);
 
@@ -379,14 +389,7 @@ void wAppIconMove(WAppIcon * aicon, int x, int y)
 /* WigNix: icons in the bottom row shrink when the row fills the screen. */
 void wAppIconResize(WAppIcon *aicon, int size)
 {
-	WIcon *icon = aicon->icon;
-
-	if (icon->core->width == size && icon->core->height == size)
-		return;
-	icon->core->width = size;
-	icon->core->height = size;
-	XResizeWindow(dpy, icon->core->window, size, size);
-	update_icon_pixmap(icon);
+	wIconResize(aicon->icon, size);
 }
 
 #ifdef WS_INDICATOR
