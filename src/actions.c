@@ -1420,8 +1420,8 @@ void wIconifyWindow(WWindow *wwin)
 	}
 
 	if (!wPreferences.disable_miniwindows && !wwin->flags.net_handle_icon) {
-		if (!wwin->flags.icon_moved)
-			PlaceIcon(wwin->screen_ptr, &wwin->icon_x, &wwin->icon_y, wGetHeadForWindow(wwin));
+		/* WigNix: straight into its slot in the bottom row */
+		wArrangeIconsSlot(wwin->screen_ptr, wwin, &wwin->icon_x, &wwin->icon_y);
 
 		wwin->icon = icon_create_for_wwindow(wwin);
 		wwin->icon->mapped = 1;
@@ -2042,7 +2042,9 @@ void wRefreshDesktop(WScreen *scr)
 	XFlush(dpy);
 }
 
-void wArrangeIcons(WScreen *scr, Bool arrangeAll)
+/* WigNix: lays out the bottom row. With `pending` set, nothing moves: the
+ * slot that window would get once miniaturized is returned instead. */
+static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px, int *py)
 {
 
 	int head;
@@ -2157,7 +2159,7 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 #define WIGNIX_MINI_SHOWN(w) ((w)->icon && (w)->flags.miniaturized && !(w)->flags.hidden && \
 	((w)->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w) || wPreferences.sticky_icons))
 		for (mw = first; mw; mw = mw->next)
-			if (WIGNIX_MINI_SHOWN(mw))
+			if (WIGNIX_MINI_SHOWN(mw) || mw == pending)
 				count[wGetHeadForWindow(mw)]++;
 		for (head = 0; head < heads; ++head) {
 			avail = vars[head].sx2 - vars[head].sx1 - fixed[head];
@@ -2174,9 +2176,12 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 				continue;
 			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
 			w = (ai->icon->icon_win != None) ? isize : size[head];
-			wAppIconResize(ai, w);
 			nx = xpos[head];
 			ny = vars[head].sy2 - w;
+			xpos[head] += w;
+			if (pending)
+				continue;
+			wAppIconResize(ai, w);
 			if (ai->x_pos != nx || ai->y_pos != ny) {
 #ifdef USE_ANIMATIONS
 				if (!wPreferences.no_animations)
@@ -2184,18 +2189,25 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 #endif /* USE_ANIMATIONS */
 			}
 			wAppIconMove(ai, nx, ny);
-			xpos[head] += w;
 		}
 		for (mw = first; mw; mw = mw->next) {
-			if (!WIGNIX_MINI_SHOWN(mw)) {
-				if (arrangeAll)
+			if (!(WIGNIX_MINI_SHOWN(mw) || mw == pending)) {
+				if (arrangeAll && !pending)
 					mw->flags.icon_moved = 0;
 				continue;
 			}
 			head = wGetHeadForWindow(mw);
-			wIconResize(mw->icon, size[head]);
 			nx = xpos[head];
 			ny = vars[head].sy2 - size[head];
+			if (pending) {
+				if (mw == pending) {
+					*px = nx;
+					*py = ny;
+				}
+				xpos[head] += size[head];
+				continue;
+			}
+			wIconResize(mw->icon, size[head]);
 			if (mw->icon_x != nx || mw->icon_y != ny)
 				move_window(mw->icon->core->window, mw->icon_x, mw->icon_y, nx, ny);
 			mw->icon_x = nx;
@@ -2207,6 +2219,18 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 	}
 
 	wfree(vars);
+}
+
+void wArrangeIcons(WScreen *scr, Bool arrangeAll)
+{
+	row_layout(scr, arrangeAll, NULL, NULL, NULL);
+}
+
+/* WigNix: where a window about to be miniaturized lands in the row, so the
+ * miniaturize animation goes straight there. */
+void wArrangeIconsSlot(WScreen *scr, WWindow *wwin, int *x, int *y)
+{
+	row_layout(scr, False, wwin, x, y);
 }
 
 void wSelectWindow(WWindow *wwin, Bool flag)

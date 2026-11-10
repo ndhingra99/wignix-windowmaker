@@ -223,6 +223,10 @@ void paint_app_icon(WApplication *wapp)
 	scr = wapp->main_window_desc->screen_ptr;
 	wapp->app_icon->main_window = wapp->main_window;
 
+	/* WigNix: only dockapps are ever shown as application icons. */
+	if (icon->icon_win == None)
+		return;
+
 	/* If the icon is docked, don't continue */
 	if (wapp->app_icon->docked)
 		return;
