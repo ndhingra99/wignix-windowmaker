@@ -2903,28 +2903,11 @@ static void titlebarDblClick(WCoreWindow *sender, void *data, XEvent *event)
 	event->xbutton.state &= w_global.shortcut.modifiers_mask;
 
 	if (event->xbutton.button == Button1 ) {
-		if (event->xbutton.state == 0 ) {
-			if (!WFLAGP(wwin, no_shadeable) & !wPreferences.double_click_fullscreen) {
-				/* shade window */
-				if (wwin->flags.shaded)
-					wUnshadeWindow(wwin);
-				else
-					wShadeWindow(wwin);
-			} 
-		}
-		
-		if (wPreferences.double_click_fullscreen) {
-			int dir = 0;
-
-			if (event->xbutton.state == 0) {
-				/* maximize window full screen*/
-				dir |= (MAX_VERTICAL|MAX_HORIZONTAL);
-				int ndir = dir ^ wwin->flags.maximized;
-				if (ndir != 0)
-					wMaximizeWindow(wwin, ndir, wGetHeadForWindow(wwin));
-				else
-					wUnmaximizeWindow(wwin);
-			}
+		/* WigNix: a plain double click on the titlebar miniaturizes the window
+		 * into the icon row; the titlebar button maximizes. */
+		if (event->xbutton.state == 0) {
+			if (!WFLAGP(wwin, no_miniaturizable))
+				wIconifyWindow(wwin);
 		} else {
 			int dir = 0;
 
@@ -3177,18 +3160,21 @@ static void windowIconifyClick(WCoreWindow *sender, void *data, XEvent *event)
 	if (event->xbutton.button < Button1 || event->xbutton.button > Button3)
 		return;
 
-	if (wwin->protocols.MINIATURIZE_WINDOW && event->xbutton.state == 0) {
-		wClientSendProtocol(wwin, w_global.atom.gnustep.wm_miniaturize_window,
-								  w_global.timestamp.last_event);
-	} else {
+	/* WigNix: the left titlebar button maximizes (and restores); a double
+	 * click on the titlebar miniaturizes instead. Control-click or the right
+	 * button still hide the whole application. */
+	{
 		WApplication *wapp;
 		if ((event->xbutton.state & ControlMask) || (event->xbutton.button == Button3)) {
-
 			wapp = wApplicationOf(wwin->main_window);
 			if (wapp && !WFLAGP(wwin, no_appicon))
 				wHideApplication(wapp);
-		} else if (event->xbutton.state == 0) {
-			wIconifyWindow(wwin);
+		} else if (event->xbutton.state == 0 && IS_RESIZABLE(wwin)) {
+			int ndir = (MAX_VERTICAL | MAX_HORIZONTAL) ^ wwin->flags.maximized;
+			if (ndir != 0)
+				wMaximizeWindow(wwin, ndir, wGetHeadForWindow(wwin));
+			else
+				wUnmaximizeWindow(wwin);
 		}
 	}
 }
