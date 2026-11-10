@@ -363,9 +363,9 @@ WDefaultEntry optionList[] = {
 
 	/* dynamic options */
 
-	{"IconPosition", "blh", seIconPositions,
+	{"IconPosition", "tlh", seIconPositions,
 	    &wPreferences.icon_yard, getEnum, setIconPosition, NULL, NULL},
-	{"IconificationStyle", "Zoom", seIconificationStyles,
+	{"IconificationStyle", "Flip", seIconificationStyles,
 	    &wPreferences.iconification_style, getEnum, NULL, NULL, NULL},
 	{"EnforceIconMargin", "NO", NULL,
 	    &wPreferences.enforce_icon_margin, getBool, NULL, NULL, NULL},
@@ -481,7 +481,7 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.pointer_with_half_max_windows, getBool, NULL, NULL, NULL},
 	{"HighlightActiveApp", "YES", NULL,
 	    &wPreferences.highlight_active_app, getBool, NULL, NULL, NULL},
-	{"AutoArrangeIcons", "NO", NULL,
+	{"AutoArrangeIcons", "YES", NULL,
 	    &wPreferences.auto_arrange_icons, getBool, NULL, NULL, NULL},
 	{"NoWindowOverDock", "NO", NULL,
 	    &wPreferences.no_window_over_dock, getBool, updateUsableArea, NULL, NULL},
@@ -513,7 +513,7 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.attract, getBool, NULL, NULL, NULL},
 	{"DisableBlinking", "NO", NULL,
 	    &wPreferences.dont_blink, getBool, NULL, NULL, NULL},
-	{"SingleClickLaunch",	"NO",	NULL,
+	{"SingleClickLaunch",	"YES",	NULL,
 	    &wPreferences.single_click, getBool, NULL, NULL, NULL},
 	{"StrictWindozeCycle",	"YES",	NULL,
 	    &wPreferences.strict_windoze_cycle, getBool, NULL, NULL, NULL},
@@ -1299,6 +1299,13 @@ void wReadDefaults(WScreen * scr, WMPropList * new_dict)
 				scr->clip_submenu->flags.realized = 0;
 		}
 	}
+
+	/* WigNix: the application icon row is fixed, so these are not settings. */
+	wPreferences.single_click = 1;
+	wPreferences.iconification_style = WIS_FLIP;
+	wPreferences.auto_arrange_icons = 1;
+	wPreferences.icon_yard = IY_TOP;
+	wPreferences.icon_size = 64;
 }
 
 void wDefaultUpdateIcons(WScreen *scr)

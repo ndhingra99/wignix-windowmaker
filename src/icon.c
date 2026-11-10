@@ -250,6 +250,7 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 	int x, y, sx, sy;
 	unsigned w, h;
 	int theight = 0;
+	int isize;
 	WScreen *scr = icon->core->screen_ptr;
 
 	switch (icon->tile_type) {
@@ -272,21 +273,42 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 		tile = RCloneImage(scr->icon_tile);
 	}
 
+	/* WigNix: icons in the bottom row may be smaller than IconSize. */
+	isize = icon->core->width;
+	if (tile->width != isize || tile->height != isize) {
+		RImage *scaled = RScaleImage(tile, isize, isize);
+
+		RReleaseImage(tile);
+		tile = scaled;
+	}
+
 	if (image) {
-		w = (image->width > wPreferences.icon_size)
-		    ? wPreferences.icon_size : image->width;
-		x = (wPreferences.icon_size - w) / 2;
-		sx = (image->width - w) / 2;
+		RImage *img = image;
 
 		if (icon->show_title)
 			theight = WMFontHeight(scr->icon_title_font);
+		if (image->width > isize || image->height > isize - theight) {
+			int nw = image->width, nh = image->height;
 
-		h = (image->height + theight > wPreferences.icon_size
-		     ? wPreferences.icon_size - theight : image->height);
-		y = theight + (wPreferences.icon_size - theight - h) / 2;
-		sy = (image->height - h) / 2;
-
-		RCombineArea(tile, image, sx, sy, w, h, x, y);
+			if (nw > isize) {
+				nh = nh * isize / nw;
+				nw = isize;
+			}
+			if (nh > isize - theight) {
+				nw = nw * (isize - theight) / nh;
+				nh = isize - theight;
+			}
+			img = RScaleImage(image, nw > 0 ? nw : 1, nh > 0 ? nh : 1);
+		}
+		w = img->width;
+		h = img->height;
+		x = (isize - w) / 2;
+		y = theight + (isize - theight - h) / 2;
+		sx = 0;
+		sy = 0;
+		RCombineArea(tile, img, sx, sy, w, h, x, y);
+		if (img != image)
+			RReleaseImage(img);
 	}
 
 	if (icon->shadowed) {

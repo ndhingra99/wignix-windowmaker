@@ -36,7 +36,6 @@ WPrefs_SOURCES = \
 	Focus.c \
 	FontSimple.c \
 	HotCornerShortcuts.c \
-	Icons.c \
 	KeyboardShortcuts.c \
 	Menu.c \
 	MenuPreferences.c \

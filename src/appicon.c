@@ -376,6 +376,19 @@ void wAppIconMove(WAppIcon * aicon, int x, int y)
 	aicon->y_pos = y;
 }
 
+/* WigNix: icons in the bottom row shrink when the row fills the screen. */
+void wAppIconResize(WAppIcon *aicon, int size)
+{
+	WIcon *icon = aicon->icon;
+
+	if (icon->core->width == size && icon->core->height == size)
+		return;
+	icon->core->width = size;
+	icon->core->height = size;
+	XResizeWindow(dpy, icon->core->window, size, size);
+	update_icon_pixmap(icon);
+}
+
 #ifdef WS_INDICATOR
 static void updateDockNumbers(WScreen *scr)
 {
@@ -433,7 +446,7 @@ void wAppIconPaint(WAppIcon *aicon)
 	XSetClipMask(dpy, scr->copy_gc, None);
 	if (aicon->launching)
 		XFillRectangle(dpy, aicon->icon->core->window, scr->stipple_gc,
-			       0, 0, wPreferences.icon_size, wPreferences.icon_size);
+			       0, 0, aicon->icon->core->width, aicon->icon->core->height);
 }
 
 /* Save the application icon, if it's a dockapp then use it with dock = True */
@@ -736,7 +749,7 @@ void appIconMouseDown(WObjDescriptor * desc, XEvent * event)
 	}
 
 	hasMoved = wHandleAppIconMove(aicon, event);
-	if (wPreferences.single_click && !hasMoved && aicon->dock != NULL)
+	if (wPreferences.single_click && !hasMoved)
 	{
 		iconDblClick(desc, event);
 	}
@@ -782,6 +795,10 @@ Bool wHandleAppIconMove(WAppIcon *aicon, XEvent *event)
 		if (originalDock == NULL)
 			wLowerFrame(icon->core);
 	}
+
+	/* WigNix: icons outside a dock stay where the bottom row put them. */
+	if (originalDock == NULL)
+		return False;
 
 	if (XGrabPointer(dpy, icon->core->window, True, ButtonMotionMask
 			 | ButtonReleaseMask | ButtonPressMask, GrabModeAsync,

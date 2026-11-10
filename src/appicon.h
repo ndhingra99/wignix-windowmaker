@@ -76,6 +76,7 @@ Bool wHandleAppIconMove(WAppIcon *aicon, XEvent *event);
 void wAppIconDestroy(WAppIcon *aicon);
 void wAppIconPaint(WAppIcon *aicon);
 void wAppIconMove(WAppIcon *aicon, int x, int y);
+void wAppIconResize(WAppIcon *aicon, int size);
 void create_appicon_for_application(WApplication *wapp, WWindow *wwin);
 void removeAppIconFor(WApplication * wapp);
 void save_appicon(WAppIcon *aicon);

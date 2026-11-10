@@ -2045,7 +2045,6 @@ void wRefreshDesktop(WScreen *scr)
 void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 {
 	WWindow *wwin;
-	WAppIcon *aicon;
 
 	int head;
 	const int heads = wXineramaHeads(scr);
@@ -2125,33 +2124,60 @@ void wArrangeIcons(WScreen *scr, Bool arrangeAll)
 	? vars[head].yo + vars[head].ys*(vars[head].pi*isize) \
 	: vars[head].yo + vars[head].ys*(vars[head].si*isize))
 
-	/* arrange application icons */
-	aicon = scr->app_icon_list;
-	/* reverse them to avoid unnecessarily sliding of icons */
-	while (aicon && aicon->next)
-		aicon = aicon->next;
+	/* WigNix: application icons form one row centred along the bottom of
+	 * each head, with no gaps. When the row would overrun the head the
+	 * plain icons shrink; dockapps keep the window size they were born with. */
+	{
+		int count[heads], total[heads], size[heads], xpos[heads];
+		WAppIcon *ai, *oldest;
+		int w, nx, ny;
 
-	while (aicon) {
-		if (!aicon->docked) {
-			/* CHECK: can icon be NULL here ? */
-			/* The intention here is to place the AppIcon on the head that
-			 * contains most of the applications _main_ window. */
-			head = wGetHeadForWindow(aicon->icon->owner);
-
-			if (aicon->x_pos != X || aicon->y_pos != Y) {
+		for (head = 0; head < heads; ++head) {
+			count[head] = 0;
+			total[head] = 0;
+		}
+		for (ai = scr->app_icon_list; ai; ai = ai->next) {
+			if (ai->docked)
+				continue;
+			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
+			count[head]++;
+		}
+		for (head = 0; head < heads; ++head) {
+			size[head] = isize;
+			if (count[head] > 0 && count[head] * isize > vars[head].sx2 - vars[head].sx1)
+				size[head] = (vars[head].sx2 - vars[head].sx1) / count[head];
+			if (size[head] < 16)
+				size[head] = 16;
+		}
+		/* the list grows at its head, so walk it backwards: oldest icon leftmost */
+		oldest = scr->app_icon_list;
+		while (oldest && oldest->next)
+			oldest = oldest->next;
+		for (ai = oldest; ai; ai = ai->prev) {
+			if (ai->docked)
+				continue;
+			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
+			total[head] += (ai->icon->icon_win != None) ? isize : size[head];
+		}
+		for (head = 0; head < heads; ++head)
+			xpos[head] = vars[head].sx1 + (vars[head].sx2 - vars[head].sx1 - total[head]) / 2;
+		for (ai = oldest; ai; ai = ai->prev) {
+			if (ai->docked)
+				continue;
+			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
+			w = (ai->icon->icon_win != None) ? isize : size[head];
+			wAppIconResize(ai, w);
+			nx = xpos[head];
+			ny = vars[head].sy2 - w;
+			if (ai->x_pos != nx || ai->y_pos != ny) {
 #ifdef USE_ANIMATIONS
 				if (!wPreferences.no_animations)
-					slide_window(aicon->icon->core->window, aicon->x_pos, aicon->y_pos, X, Y);
+					slide_window(ai->icon->core->window, ai->x_pos, ai->y_pos, nx, ny);
 #endif /* USE_ANIMATIONS */
 			}
-			wAppIconMove(aicon, X, Y);
-			vars[head].pi++;
-			if (vars[head].pi >= vars[head].pf) {
-				vars[head].pi = 0;
-				vars[head].si++;
-			}
+			wAppIconMove(ai, nx, ny);
+			xpos[head] += w;
 		}
-		aicon = aicon->prev;
 	}
 
 	/* arrange miniwindows */
