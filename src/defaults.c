@@ -1300,11 +1300,13 @@ void wReadDefaults(WScreen * scr, WMPropList * new_dict)
 		}
 	}
 
-	/* WigNix: the application icon row is fixed, so these are not settings. */
+	/* WigNix: the application icon row is fixed, so these are not settings.
+	 * The yard is the bottom edge: that is where the row sits and where
+	 * the usable area (maximized windows) leaves room for it. */
 	wPreferences.single_click = 1;
 	wPreferences.iconification_style = WIS_FLIP;
 	wPreferences.auto_arrange_icons = 1;
-	wPreferences.icon_yard = IY_TOP;
+	wPreferences.icon_yard = IY_BOTTOM | IY_LEFT | IY_HORIZ;
 	wPreferences.icon_size = 64;
 }
 
