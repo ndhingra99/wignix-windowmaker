@@ -69,7 +69,7 @@ static Atom net_showing_desktop;
 /* Other Root Window Messages */
 static Atom net_close_window;
 static Atom net_moveresize_window;	/* TODO */
-static Atom net_wm_moveresize;	/* TODO */
+static Atom net_wm_moveresize;
 
 /* Application Window Properties */
 static Atom net_wm_name;
@@ -224,21 +224,16 @@ static atomitem_t atomNames[] = {
 #define _NET_WM_STATE_ADD 1
 #define _NET_WM_STATE_TOGGLE 2
 
-#if 0
 /*
- * These constant provide information on the kind of window move/resize when
+ * These constants provide information on the kind of window move/resize when
  * it is initiated by the application instead of by WindowMaker. They are
  * parameter for the client message _NET_WM_MOVERESIZE, as defined by the
  * FreeDesktop wm-spec standard:
  *   http://standards.freedesktop.org/wm-spec/1.5/ar01s04.html
  *
- * Today, WindowMaker does not support this at all (the corresponding Atom
- * is not added to the list in setSupportedHints), probably because there is
- * nothing it needs to do about it, the application is assumed to know what
- * it is doing, and WindowMaker won't get in the way.
- *
- * The definition of the constants (taken from the standard) are disabled to
- * avoid a spurious warning (-Wunused-macros).
+ * WigNix handles the message: a client that draws its own title bar or
+ * borders (Steam, GTK and Qt client-side decorations) gets the ordinary
+ * interactive move or resize.
  */
 #define _NET_WM_MOVERESIZE_SIZE_TOPLEFT      0
 #define _NET_WM_MOVERESIZE_SIZE_TOP          1
@@ -251,7 +246,7 @@ static atomitem_t atomNames[] = {
 #define _NET_WM_MOVERESIZE_MOVE              8	/* movement only */
 #define _NET_WM_MOVERESIZE_SIZE_KEYBOARD     9	/* size via keyboard */
 #define _NET_WM_MOVERESIZE_MOVE_KEYBOARD    10	/* move via keyboard */
-#endif
+#define _NET_WM_MOVERESIZE_CANCEL           11	/* cancel operation */
 
 static void observer(void *self, WMNotification *notif);
 static void wsobserver(void *self, WMNotification *notif);
@@ -289,9 +284,7 @@ static void setSupportedHints(WScreen *scr)
 	atom[i++] = net_workarea;
 	atom[i++] = net_supporting_wm_check;
 	atom[i++] = net_showing_desktop;
-#if 0
 	atom[i++] = net_wm_moveresize;
-#endif
 	atom[i++] = net_wm_desktop;
 #ifdef USE_XINERAMA
 	atom[i++] = net_wm_fullscreen_monitors;
@@ -1743,6 +1736,47 @@ Bool wNETWMProcessClientMessage(XClientMessageEvent *event)
 				wNETWMShowingDesktop(wwin->screen_ptr, False);
 				wMakeWindowVisible(wwin);
 		}
+		return True;
+
+	} else if (event->message_type == net_wm_moveresize) {
+		/* WigNix: the client has let go of its pointer grab (the spec
+		 * requires it before sending), so we take our own and run the
+		 * ordinary move or resize from where the pointer is. */
+		long direction = event->data.l[2];
+		XEvent ev;
+
+		if (direction == _NET_WM_MOVERESIZE_CANCEL)
+			return True;
+		if (direction == _NET_WM_MOVERESIZE_SIZE_KEYBOARD
+		    || direction == _NET_WM_MOVERESIZE_MOVE_KEYBOARD) {
+			wKeyboardMoveResizeWindow(wwin);
+			return True;
+		}
+		if (wwin->flags.miniaturized || wwin->flags.shaded || wwin->flags.fullscreen)
+			return True;
+		if (direction == _NET_WM_MOVERESIZE_MOVE && WFLAGP(wwin, no_movable))
+			return True;
+		if (direction != _NET_WM_MOVERESIZE_MOVE && WFLAGP(wwin, no_resizable))
+			return True;
+
+		memset(&ev, 0, sizeof(ev));
+		ev.type = ButtonPress;
+		ev.xbutton.display = dpy;
+		ev.xbutton.window = wwin->frame->core->window;
+		ev.xbutton.root = wwin->screen_ptr->root_win;
+		ev.xbutton.x_root = event->data.l[0];
+		ev.xbutton.y_root = event->data.l[1];
+		ev.xbutton.button = event->data.l[3];
+		ev.xbutton.time = w_global.timestamp.last_event;
+		if (XGrabPointer(dpy, wwin->screen_ptr->root_win, False,
+				 ButtonMotionMask | ButtonReleaseMask | ButtonPressMask,
+				 GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess)
+			return True;
+		if (direction == _NET_WM_MOVERESIZE_MOVE)
+			wMouseMoveWindow(wwin, &ev);
+		else
+			wMouseResizeWindow(wwin, &ev);
+		XUngrabPointer(dpy, CurrentTime);
 		return True;
 
 	} else if (event->message_type == net_close_window) {
