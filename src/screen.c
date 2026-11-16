@@ -810,6 +810,35 @@ WScreen *wScreenInit(int screen_number)
 	return scr;
 }
 
+/*
+ * The screen was resized or its outputs changed (RandR): take the new size
+ * and head layout so fullscreen, placement and the usable areas follow the
+ * monitors that are there now.
+ */
+void wScreenUpdateGeometry(WScreen *scr)
+{
+	int old_heads;
+
+	if (!scr)
+		return;
+
+	old_heads = wXineramaHeads(scr);
+	scr->scr_width = WidthOfScreen(ScreenOfDisplay(dpy, scr->screen));
+	scr->scr_height = HeightOfScreen(ScreenOfDisplay(dpy, scr->screen));
+
+	if (scr->xine_info.screens)
+		wfree(scr->xine_info.screens);
+	wInitXinerama(scr);
+
+	if (wXineramaHeads(scr) != old_heads) {
+		wfree(scr->usableArea);
+		wfree(scr->totalUsableArea);
+		scr->usableArea = (WArea *) wmalloc(sizeof(WArea) * wXineramaHeads(scr));
+		scr->totalUsableArea = (WArea *) wmalloc(sizeof(WArea) * wXineramaHeads(scr));
+	}
+	wScreenUpdateUsableArea(scr);
+}
+
 void wScreenUpdateUsableArea(WScreen *scr)
 {
 	/*

@@ -271,10 +271,12 @@ void DispatchEvent(XEvent * event)
 		break;
 
 	case ConfigureNotify:
+		if (event->xconfigure.window == DefaultRootWindow(dpy)) {
 #ifdef USE_RANDR
-		if (event->xconfigure.window == DefaultRootWindow(dpy))
 			XRRUpdateConfiguration(event);
 #endif
+			wScreenUpdateGeometry(wScreenForRootWindow(event->xconfigure.window));
+		}
 		break;
 
 	case SelectionRequest:
@@ -580,9 +582,7 @@ static void handleExtensions(XEvent * event)
 		 * XRRUpdateConfiguration when screen configuration change notify
 		 * events are generated */
 		XRRUpdateConfiguration(event);
-		WCHANGE_STATE(WSTATE_RESTARTING);
-		Shutdown(WSRestartPreparationMode);
-		Restart(NULL,True);
+		wScreenUpdateGeometry(wScreenForRootWindow(((XRRScreenChangeNotifyEvent *) event)->root));
 	}
 #endif
 }
