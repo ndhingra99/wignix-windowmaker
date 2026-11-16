@@ -407,7 +407,11 @@ static RImage *makeRImageFromARGBData(unsigned long *data)
 	if (size == 0)
 		return NULL;
 
+	/* wrlib refuses sizes beyond its limits (and a failed malloc): a window
+	 * advertising such an icon must not take the window manager down. */
 	image = RCreateImage(width, height, True);
+	if (!image)
+		return NULL;
 
 	for (imgdata = image->data, i = 2; i < size + 2; i++, imgdata += 4) {
 		pixel = data[i];
@@ -461,6 +465,8 @@ static RImage *findBestIcon(unsigned long *data, unsigned long items)
 		if ((sx < 1) || (sy < 1))
 			break;
 		size = sx * sy + 2;
+		if ((unsigned long)size > items - i)
+			break;
 
 		/* check the size difference if it's not too large */
 		if ((sx <= wanted) && (sy <= wanted)) {
@@ -486,7 +492,7 @@ static RImage *findBestIcon(unsigned long *data, unsigned long items)
 	largest = 0;
 	for (i = 0L; i < items - 1;) {
 		size = (int)data[i] * (int)data[i + 1];
-		if (size == 0)
+		if (size <= 0 || (unsigned long)size + 2 > items - i)
 			break;
 		if (size > largest) {
 			icon = &data[i];
@@ -501,6 +507,8 @@ static RImage *findBestIcon(unsigned long *data, unsigned long items)
 
 	/* create a scaled down version of the icon */
 	src_image = makeRImageFromARGBData(icon);
+	if (!src_image)
+		return NULL;
 	if (src_image->width > src_image->height) {
 		f = (double)wanted / (double)src_image->width;
 		ret_image = RScaleImage(src_image, wanted, (int)(f * (double)(src_image->height)));
