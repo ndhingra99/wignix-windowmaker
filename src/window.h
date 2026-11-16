@@ -357,6 +357,8 @@ void wWindowConfigure(WWindow *wwin, int req_x, int req_y,
 
 void wWindowMove(WWindow *wwin, int req_x, int req_y);
 
+void wWindowKeepInside(WWindow *wwin, int head, int *x, int *y, int *width, int *height);
+
 void wWindowSynthConfigureNotify(WWindow *wwin);
 
 WWindow *wWindowFor(Window window);

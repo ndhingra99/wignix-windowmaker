@@ -913,6 +913,24 @@ void wScreenUpdateUsableArea(WScreen *scr)
 		}
 	}
 
+	/* WigNix: windows follow a smaller usable area (the menu bar's strut
+	 * arriving, a monitor going away), so none is left partly outside. */
+	{
+		WWindow *wwin;
+
+		for (wwin = scr->focused_window; wwin; wwin = wwin->prev) {
+			int x = wwin->frame_x, y = wwin->frame_y;
+			int w = wwin->client.width, h = wwin->client.height;
+
+			if (!wwin->frame)
+				continue;
+			wWindowKeepInside(wwin, -1, &x, &y, &w, &h);
+			if (x != wwin->frame_x || y != wwin->frame_y
+			    || w != (int)wwin->client.width || h != (int)wwin->client.height)
+				wWindowConfigure(wwin, x, y, w, h);
+		}
+	}
+
 	if (wPreferences.auto_arrange_icons)
 		wArrangeIcons(scr, True);
 }

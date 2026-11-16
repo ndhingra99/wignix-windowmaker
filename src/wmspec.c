@@ -826,6 +826,12 @@ void wNETWMUpdateWorkarea(WScreen *scr)
 	}
 }
 
+/* WigNix: panels (the menu bar) and desktop windows place themselves. */
+Bool wNETWMIsPanel(WWindow *wwin)
+{
+	return wwin->type == net_wm_window_type_dock || wwin->type == net_wm_window_type_desktop;
+}
+
 Bool wNETWMGetUsableArea(WScreen *scr, int head, WArea *area)
 {
 	WReservedArea *cur;

@@ -648,48 +648,59 @@ static int matchIdentifier(const void *item, const void *cdata)
  *
  *----------------------------------------------------------------
  */
-/* WigNix: a new window is shrunk and shifted until its whole frame, title
- * bar to resize bar, lies inside the usable area of its head, so the menu
- * bar's strut and the icon row stay clear and every control is reachable.
- * Fullscreen windows are left alone. */
-static void fitInsideUsableArea(WWindow *wwin, int *x, int *y, unsigned *width, unsigned *height)
+/* WigNix: the whole frame of a window, title bar to resize bar, always lies
+ * inside the usable area of one head: never partly off the screen, under the
+ * menu bar's strut or over the icon row. A window too large for the area is
+ * shrunk to fit. A shaded window keeps room for its unshaded height.
+ * Fullscreen windows and panels (the menu bar) are left alone.
+ * `head` is the head to keep the window on, or -1 for the head holding most
+ * of the requested frame. `width` and `height` are the client size and may
+ * be shrunk; with NULL the current size is kept (a plain move). */
+void wWindowKeepInside(WWindow *wwin, int head, int *x, int *y, int *width, int *height)
 {
 	WScreen *scr = wwin->screen_ptr;
-	int top = wwin->frame->top_width;
-	int bottom = wwin->frame->bottom_width;
-	int border = 2 * scr->frame_border_width;
-	unsigned w = *width, h = *height;
+	int border = HAS_BORDER(wwin) ? 2 * scr->frame_border_width : 0;
+	int deco = wwin->frame->top_width + wwin->frame->bottom_width;
+	int w = width ? *width : (int)wwin->client.width;
+	int h = height ? *height : (int)wwin->client.height;
 	WMRect rect;
 	WArea area;
 	int avail;
 
-	if (wwin->flags.fullscreen)
+	if (wwin->flags.fullscreen || wNETWMIsPanel(wwin))
 		return;
 
-	rect.pos.x = *x;
-	rect.pos.y = *y;
-	rect.size.width = w + border;
-	rect.size.height = h + top + bottom + border;
-	area = wGetUsableAreaForHead(scr, wGetHeadForRect(scr, rect), NULL, True);
+	if (head < 0) {
+		rect.pos.x = *x;
+		rect.pos.y = *y;
+		rect.size.width = w + border;
+		rect.size.height = h + deco + border;
+		head = wGetHeadForRect(scr, rect);
+	}
+	area = wGetUsableAreaForHead(scr, head, NULL, True);
 
-	avail = area.x2 - area.x1 - border;
-	if (avail > 0 && (int)w > avail)
-		w = avail;
-	avail = area.y2 - area.y1 - top - bottom - border;
-	if (avail > 0 && (int)h > avail)
-		h = avail;
-	if (w != *width || h != *height) {
-		wWindowConstrainSize(wwin, &w, &h);
-		*width = w;
-		*height = h;
+	if (width && height) {
+		unsigned int uw = w, uh = h;
+
+		avail = area.x2 - area.x1 - border;
+		if (avail > 0 && w > avail)
+			uw = avail;
+		avail = area.y2 - area.y1 - deco - border;
+		if (avail > 0 && h > avail)
+			uh = avail;
+		if ((int)uw != w || (int)uh != h) {
+			wWindowConstrainSize(wwin, &uw, &uh);
+			*width = w = uw;
+			*height = h = uh;
+		}
 	}
 
-	if (*x + (int)w + border > area.x2)
+	if (*x + w + border > area.x2)
 		*x = area.x2 - w - border;
 	if (*x < area.x1)
 		*x = area.x1;
-	if (*y + top + (int)h + bottom + border > area.y2)
-		*y = area.y2 - top - h - bottom - border;
+	if (*y + h + deco + border > area.y2)
+		*y = area.y2 - h - deco - border;
 	if (*y < area.y1)
 		*y = area.y1;
 }
@@ -1263,8 +1274,6 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 		if (gy > 0)
 			y -= wwin->frame->top_width + wwin->frame->bottom_width;
 	}
-
-	fitInsideUsableArea(wwin, &x, &y, &width, &height);
 
 	/*
 	 * wWindowConfigure() will init the client window's size
@@ -2195,6 +2204,8 @@ void wWindowConfigure(WWindow *wwin, int req_x, int req_y, int req_width, int re
 	int synth_notify = False;
 	int resize;
 
+	wWindowKeepInside(wwin, -1, &req_x, &req_y, &req_width, &req_height);
+
 	resize = (req_width != wwin->client.width || req_height != wwin->client.height);
 
 	if (WFLAGP(wwin, dont_move_off))
@@ -2280,6 +2291,8 @@ void wWindowMove(WWindow *wwin, int req_x, int req_y)
 	if (WFLAGP(wwin, dont_move_off))
 		wScreenBringInside(wwin->screen_ptr, &req_x, &req_y,
 				   wwin->frame->core->width, wwin->frame->core->height);
+
+	wWindowKeepInside(wwin, -1, &req_x, &req_y, NULL, NULL);
 
 	wwin->client.x = req_x;
 	wwin->client.y = req_y + wwin->frame->top_width;

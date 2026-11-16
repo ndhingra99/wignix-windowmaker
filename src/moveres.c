@@ -1159,6 +1159,11 @@ updateWindowPosition(WWindow * wwin, MoveData * data, Bool doResistance,
 	     || (dy < 0 && data->calcY - data->realY < 0)) && !vresist)
 		newY = data->calcY;
 
+	/* WigNix: the window stops at the edges of the usable area of the head
+	 * under the pointer; it follows again once the pointer comes back. */
+	if (!scr->selected_windows)
+		wWindowKeepInside(wwin, wGetHeadForPointerLocation(scr), &newX, &newY, NULL, NULL);
+
 	if (data->realX != newX || data->realY != newY) {
 
 		if (wPreferences.move_display == WDIS_NEW && !scr->selected_windows) {
@@ -2092,6 +2097,7 @@ void wMouseResizeWindow(WWindow * wwin, XEvent * ev)
 	int head = ((wPreferences.auto_arrange_icons && wXineramaHeads(scr) > 1)
 		    ? wGetHeadForWindow(wwin)
 		    : scr->xine_info.primary_head);
+	int keep_head = wGetHeadForWindow(wwin);
 	int opaqueResize = wPreferences.opaque_resize;
 
 	if (!IS_RESIZABLE(wwin))
@@ -2171,6 +2177,33 @@ void wMouseResizeWindow(WWindow * wwin, XEvent * ev)
 					fy = ry2 - fh + 1;
 				else if (res & DOWN)
 					fy = ry1;
+
+				/* WigNix: a dragged edge stops at the usable area of the
+				 * window's head; the opposite edge stays where it is. */
+				{
+					WArea area = wGetUsableAreaForHead(scr, keep_head, NULL, True);
+					int border = HAS_BORDER(wwin) ? 2 * scr->frame_border_width : 0;
+					int cw = fw, ch = fh;
+
+					if ((res & LEFT) && fx < area.x1)
+						cw = rx2 + 1 - area.x1;
+					else if ((res & RIGHT) && fx + fw + border > area.x2)
+						cw = area.x2 - border - fx;
+					if ((res & UP) && fy < area.y1)
+						ch = ry2 + 1 - area.y1;
+					else if ((res & DOWN) && fy + fh + border > area.y2)
+						ch = area.y2 - border - fy;
+					if (cw != fw || ch != fh) {
+						fw = cw;
+						fh = ch - vert_border;
+						wWindowConstrainSize(wwin, (unsigned int *)&fw, (unsigned int *)&fh);
+						fh += vert_border;
+						if (res & LEFT)
+							fx = rx2 - fw + 1;
+						if (res & UP)
+							fy = ry2 - fh + 1;
+					}
+				}
 			} else if (abs(orig_x - event.xmotion.x_root) >= MOVE_THRESHOLD
 				   || abs(orig_y - event.xmotion.y_root) >= MOVE_THRESHOLD) {
 				int tx, ty;
