@@ -648,6 +648,52 @@ static int matchIdentifier(const void *item, const void *cdata)
  *
  *----------------------------------------------------------------
  */
+/* WigNix: a new window is shrunk and shifted until its whole frame, title
+ * bar to resize bar, lies inside the usable area of its head, so the menu
+ * bar's strut and the icon row stay clear and every control is reachable.
+ * Fullscreen windows are left alone. */
+static void fitInsideUsableArea(WWindow *wwin, int *x, int *y, unsigned *width, unsigned *height)
+{
+	WScreen *scr = wwin->screen_ptr;
+	int top = wwin->frame->top_width;
+	int bottom = wwin->frame->bottom_width;
+	int border = 2 * scr->frame_border_width;
+	unsigned w = *width, h = *height;
+	WMRect rect;
+	WArea area;
+	int avail;
+
+	if (wwin->flags.fullscreen)
+		return;
+
+	rect.pos.x = *x;
+	rect.pos.y = *y;
+	rect.size.width = w + border;
+	rect.size.height = h + top + bottom + border;
+	area = wGetUsableAreaForHead(scr, wGetHeadForRect(scr, rect), NULL, True);
+
+	avail = area.x2 - area.x1 - border;
+	if (avail > 0 && (int)w > avail)
+		w = avail;
+	avail = area.y2 - area.y1 - top - bottom - border;
+	if (avail > 0 && (int)h > avail)
+		h = avail;
+	if (w != *width || h != *height) {
+		wWindowConstrainSize(wwin, &w, &h);
+		*width = w;
+		*height = h;
+	}
+
+	if (*x + (int)w + border > area.x2)
+		*x = area.x2 - w - border;
+	if (*x < area.x1)
+		*x = area.x1;
+	if (*y + top + (int)h + bottom + border > area.y2)
+		*y = area.y2 - top - h - bottom - border;
+	if (*y < area.y1)
+		*y = area.y1;
+}
+
 WWindow *wManageWindow(WScreen *scr, Window window)
 {
 	WWindow *wwin;
@@ -1217,6 +1263,8 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 		if (gy > 0)
 			y -= wwin->frame->top_width + wwin->frame->bottom_width;
 	}
+
+	fitInsideUsableArea(wwin, &x, &y, &width, &height);
 
 	/*
 	 * wWindowConfigure() will init the client window's size
