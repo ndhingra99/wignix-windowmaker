@@ -402,6 +402,43 @@ static void updateDockNumbers(WScreen *scr)
 }
 #endif				/* WS_INDICATOR */
 
+/* WigNix: one 3px dot per window of the icon's application that is
+ * miniaturized into it on the current workspace, in a centered row along
+ * the bottom edge. */
+static void drawMiniaturizedDots(WAppIcon *aicon)
+{
+	WScreen *scr = aicon->icon->core->screen_ptr;
+	Window win = aicon->icon->core->window;
+	int width = aicon->icon->core->width;
+	int height = aicon->icon->core->height;
+	int count = 0, max, x, y, i;
+	WWindow *w;
+
+	if (aicon->docked || aicon->icon->icon_win != None)
+		return;
+	for (w = scr->focused_window; w; w = w->prev)
+		if (w->main_window == aicon->main_window && w->frame && w->flags.miniaturized
+		    && (w->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w)))
+			count++;
+	if (count == 0)
+		return;
+
+	max = (width - 4 + 2) / 5;
+	if (count > max)
+		count = max;
+	x = (width - (count * 5 - 2)) / 2;
+	y = height - 6;
+	for (i = 0; i < count; i++, x += 5) {
+		/* dark shadow, then the light dot: readable on any icon */
+		XSetForeground(dpy, scr->draw_gc, scr->black_pixel);
+		XFillRectangle(dpy, win, scr->draw_gc, x + 1, y + 2, 3, 1);
+		XFillRectangle(dpy, win, scr->draw_gc, x + 2, y + 1, 1, 3);
+		XSetForeground(dpy, scr->draw_gc, scr->white_pixel);
+		XFillRectangle(dpy, win, scr->draw_gc, x, y + 1, 3, 1);
+		XFillRectangle(dpy, win, scr->draw_gc, x + 1, y, 1, 3);
+	}
+}
+
 void wAppIconPaint(WAppIcon *aicon)
 {
 	WApplication *wapp;
@@ -435,6 +472,8 @@ void wAppIconPaint(WAppIcon *aicon)
 
 	if (aicon->omnipresent)
 		drawCorner(aicon->icon);
+
+	drawMiniaturizedDots(aicon);
 
 	XSetClipMask(dpy, scr->copy_gc, None);
 	if (aicon->launching)

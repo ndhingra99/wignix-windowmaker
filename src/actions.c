@@ -2248,6 +2248,9 @@ static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px,
 			}
 			wAppIconMove(ai, nx, ny);
 			XMapWindow(dpy, ai->icon->core->window);
+			/* the miniaturized-window dots count this workspace only */
+			if (ai->icon->icon_win == None)
+				wAppIconPaint(ai);
 		}
 		for (mw = first; mw; mw = mw->next) {
 			if (!(WIGNIX_MINI_SHOWN(mw) || mw == pending)) {
