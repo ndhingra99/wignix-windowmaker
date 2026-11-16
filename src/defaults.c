@@ -1308,6 +1308,9 @@ void wReadDefaults(WScreen * scr, WMPropList * new_dict)
 	wPreferences.auto_arrange_icons = 1;
 	wPreferences.icon_yard = IY_BOTTOM | IY_LEFT | IY_HORIZ;
 	wPreferences.icon_size = 64;
+	/* A miniaturized window goes into its application's icon in the row;
+	 * there are no miniwindows. */
+	wPreferences.disable_miniwindows = 1;
 }
 
 void wDefaultUpdateIcons(WScreen *scr)

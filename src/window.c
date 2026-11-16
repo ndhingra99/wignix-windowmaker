@@ -864,6 +864,12 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 	if (WFLAGP(wwin, emulate_appicon))
 		wwin->main_window = wwin->client_win;
 
+	/* WigNix: a window without a group or client leader leads itself, so
+	 * it has an application and an icon in the row to miniaturize into. */
+	if (wwin->main_window == None && !wwin->flags.is_dockapp && !withdraw
+	    && (wwin->transient_for == None || wwin->transient_for == scr->root_win))
+		wwin->main_window = wwin->client_win;
+
 	fixLeaderProperties(wwin);
 
 	wwin->orig_main_window = wwin->main_window;
@@ -1389,6 +1395,10 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 		wwin->prev = NULL;
 	}
 
+	/* WigNix: the application's icon joins the row of this workspace. */
+	if (wPreferences.auto_arrange_icons)
+		wArrangeIcons(scr, True);
+
 	/* raise is set to true if we un-hid the app when this window was born.
 	 * we raise, else old windows of this app will be above this new one. */
 	if (raise)
@@ -1748,6 +1758,11 @@ void wUnmanageWindow(WWindow *wwin, Bool restore, Bool destroyed)
 	wNETCleanupFrameExtents(wwin);
 
 	wWindowDestroy(wwin);
+
+	/* WigNix: an application with no window left in this workspace leaves
+	 * its row. */
+	if (wPreferences.auto_arrange_icons)
+		wArrangeIcons(scr, True);
 	XFlush(dpy);
 }
 
@@ -2125,6 +2140,10 @@ void wWindowChangeWorkspace(WWindow *wwin, int workspace)
 
 	if (unmap)
 		wWindowUnmap(wwin);
+
+	/* WigNix: the application's icon follows its windows between workspaces. */
+	if (wPreferences.auto_arrange_icons)
+		wArrangeIcons(scr, True);
 }
 
 void wWindowChangeWorkspaceRelative(WWindow *wwin, int amount)

@@ -1362,9 +1362,39 @@ static WWindow *recursiveTransientFor(WWindow *wwin)
 	return wwin;
 }
 
+/* WigNix: stamps WWindow.iconify_order, so the oldest is restored first. */
+static unsigned long iconify_counter;
+
+/* WigNix: the application icon in the bottom row that a window miniaturizes
+ * into, or NULL when its application has none. */
+WAppIcon *wWindowRowIcon(WWindow *wwin)
+{
+	WApplication *wapp = wApplicationOf(wwin->main_window);
+
+	if (!wapp || !wapp->app_icon || wapp->app_icon->docked
+	    || WFLAGP(wapp->main_window_desc, no_appicon))
+		return NULL;
+	return wapp->app_icon;
+}
+
 #ifdef USE_ANIMATIONS
 static int getAnimationGeometry(WWindow *wwin, int *ix, int *iy, int *iw, int *ih)
 {
+	/* WigNix: the window shrinks into, and grows back out of, its
+	 * application's icon in the row. */
+	if (wPreferences.disable_miniwindows && !wwin->flags.net_handle_icon) {
+		WAppIcon *aicon = wWindowRowIcon(wwin);
+
+		if (wwin->screen_ptr->flags.startup || wPreferences.no_animations
+		    || wwin->flags.skip_next_animation || !aicon)
+			return 0;
+		*ix = aicon->x_pos;
+		*iy = aicon->y_pos;
+		*iw = aicon->icon->core->width;
+		*ih = aicon->icon->core->height;
+		return 1;
+	}
+
 	if (wwin->screen_ptr->flags.startup || wPreferences.no_animations
 		|| wwin->flags.skip_next_animation || wwin->icon == NULL)
 		return 0;
@@ -1408,6 +1438,11 @@ void wIconifyWindow(WWindow *wwin)
 		if (owner && owner->flags.miniaturized)
 			return;
 	}
+
+	/* WigNix: with no application icon to go into, the window would be
+	 * out of reach, so it stays. */
+	if (wPreferences.disable_miniwindows && !wwin->flags.net_handle_icon && !wWindowRowIcon(wwin))
+		return;
 
 	present = wwin->frame->workspace == wwin->screen_ptr->current_workspace;
 
@@ -1472,6 +1507,7 @@ void wIconifyWindow(WWindow *wwin)
 
 	wwin->flags.miniaturized = 1;
 	wwin->flags.mapped = 0;
+	wwin->iconify_order = ++iconify_counter;
 
 	/* unmap transients */
 	unmapTransientsFor(wwin);
@@ -2042,6 +2078,22 @@ void wRefreshDesktop(WScreen *scr)
 	XFlush(dpy);
 }
 
+/* WigNix: an application's icon is in the row on the workspaces where the
+ * application has a window, miniaturized or not; a dockapp's is everywhere.
+ * Windows that want no icon (panels such as the menu bar) do not count. */
+static Bool rowIconHere(WScreen *scr, WAppIcon *ai)
+{
+	WWindow *w;
+
+	if (ai->icon->icon_win != None)
+		return True;
+	for (w = scr->focused_window; w; w = w->prev)
+		if (w->main_window == ai->main_window && w->frame && !WFLAGP(w, no_appicon)
+		    && (w->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w)))
+			return True;
+	return False;
+}
+
 /* WigNix: lays out the bottom row. With `pending` set, nothing moves: the
  * slot that window would get once miniaturized is returned instead. */
 static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px, int *py)
@@ -2125,10 +2177,11 @@ static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px,
 	? vars[head].yo + vars[head].ys*(vars[head].pi*isize) \
 	: vars[head].yo + vars[head].ys*(vars[head].si*isize))
 
-	/* WigNix: dockapps and miniaturized windows share one row centred along
-	 * the bottom of each head, with no gaps. Dockapps keep the window size
-	 * they were born with; the miniwindows shrink when the row would overrun
-	 * the head. */
+	/* WigNix: dockapps and the icons of the applications in this workspace
+	 * share one row centred along the bottom of each head, with no gaps.
+	 * Dockapps keep the window size they were born with; application icons
+	 * shrink when the row would overrun the head. Icons of applications with
+	 * no window here are unmapped. */
 	{
 		int fixed[heads], count[heads], size[heads], xpos[heads];
 		WAppIcon *ai, *oldest;
@@ -2144,7 +2197,7 @@ static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px,
 		while (oldest && oldest->next)
 			oldest = oldest->next;
 		for (ai = oldest; ai; ai = ai->prev) {
-			if (ai->docked)
+			if (ai->docked || !rowIconHere(scr, ai))
 				continue;
 			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
 			if (ai->icon->icon_win != None)
@@ -2174,6 +2227,11 @@ static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px,
 		for (ai = oldest; ai; ai = ai->prev) {
 			if (ai->docked)
 				continue;
+			if (!rowIconHere(scr, ai)) {
+				if (!pending)
+					XUnmapWindow(dpy, ai->icon->core->window);
+				continue;
+			}
 			head = ai->icon->owner ? wGetHeadForWindow(ai->icon->owner) : 0;
 			w = (ai->icon->icon_win != None) ? isize : size[head];
 			nx = xpos[head];
@@ -2189,6 +2247,7 @@ static void row_layout(WScreen *scr, Bool arrangeAll, WWindow *pending, int *px,
 #endif /* USE_ANIMATIONS */
 			}
 			wAppIconMove(ai, nx, ny);
+			XMapWindow(dpy, ai->icon->core->window);
 		}
 		for (mw = first; mw; mw = mw->next) {
 			if (!(WIGNIX_MINI_SHOWN(mw) || mw == pending)) {

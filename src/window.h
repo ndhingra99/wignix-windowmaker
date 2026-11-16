@@ -291,6 +291,8 @@ typedef struct WWindow {
 						 * else is NULL! */
 	int icon_x, icon_y;			/* position of the icon */
 	int icon_w, icon_h;
+	unsigned long iconify_order;		/* WigNix: when it was miniaturized; the
+						 * application icon restores the oldest first */
 	RImage *net_icon_image;			/* Window Image */
 	Atom type;
 } WWindow;

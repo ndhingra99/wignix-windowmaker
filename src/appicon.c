@@ -146,16 +146,6 @@ WAppIcon *wAppIconCreateForDock(WScreen *scr, const char *command, const char *w
 
 void create_appicon_for_application(WApplication *wapp, WWindow *wwin)
 {
-	/* WigNix: only dockapps (an icon window in the withdrawn state) get an
-	 * icon in the row; ordinary applications show there only while a window
-	 * of theirs is miniaturized. */
-	if (wapp->main_window_desc) {
-		XWMHints *h = wapp->main_window_desc->wm_hints;
-
-		if (!(h && (h->flags & IconWindowHint) && (h->flags & StateHint)
-		      && h->initial_state == WithdrawnState))
-			wapp->main_window_desc->client_flags.no_appicon = 1;
-	}
 	/* Try to create an icon from the dock or clip */
 	create_appicon_from_dock(wwin, wapp, wapp->main_window);
 
@@ -222,10 +212,6 @@ void paint_app_icon(WApplication *wapp)
 	icon = wapp->app_icon->icon;
 	scr = wapp->main_window_desc->screen_ptr;
 	wapp->app_icon->main_window = wapp->main_window;
-
-	/* WigNix: only dockapps are ever shown as application icons. */
-	if (icon->icon_win == None)
-		return;
 
 	/* If the icon is docked, don't continue */
 	if (wapp->app_icon->docked)
@@ -692,6 +678,30 @@ static void iconDblClick(WObjDescriptor *desc, XEvent *event)
 
 	if (event->xbutton.state & ControlMask) {
 		relaunchApplication(wapp);
+		return;
+	}
+
+	/* WigNix: a plain click on an application's icon in the row acts on
+	 * the application's windows in this workspace. Miniaturized windows
+	 * come back one per click, the one miniaturized longest ago first; with
+	 * none miniaturized, the window used last takes the focus. */
+	if (aicon->icon->icon_win == None && !aicon->docked && event->xbutton.button == Button1
+	    && !(event->xbutton.state & (ShiftMask | MOD_MASK))) {
+		WWindow *w, *pick = NULL;
+
+#define IN_THIS_WORKSPACE(w) ((w)->main_window == aicon->main_window && (w)->frame \
+	&& ((w)->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w)))
+		for (w = scr->focused_window; w; w = w->prev)
+			if (IN_THIS_WORKSPACE(w) && w->flags.miniaturized
+			    && (!pick || w->iconify_order < pick->iconify_order))
+				pick = w;
+		/* the focus list runs from the window used last backwards */
+		for (w = scr->focused_window; w && !pick; w = w->prev)
+			if (IN_THIS_WORKSPACE(w) && !WFLAGP(w, no_focusable))
+				pick = w;
+#undef IN_THIS_WORKSPACE
+		if (pick)
+			wMakeWindowVisible(pick);
 		return;
 	}
 
