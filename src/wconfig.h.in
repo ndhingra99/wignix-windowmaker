@@ -195,7 +195,9 @@
 #define WIN_RESISTANCE(x)	(((x)*20)/30)
 
 /* Window level where icons reside */
-#define NORMAL_ICON_LEVEL WMNormalLevel
+/* Application icons and dockapps sit above every normal and kept-on-top
+ * window; menus and fullscreen windows still cover them. */
+#define NORMAL_ICON_LEVEL WMDockLevel
 
 /* do not divide main menu and submenu in different tiers,
  * opposed to OpenStep */
