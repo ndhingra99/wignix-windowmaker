@@ -1517,9 +1517,14 @@ void wIconifyWindow(WWindow *wwin)
 		int ix, iy, iw, ih;
 #endif
 		XUngrabPointer(dpy, CurrentTime);
+#ifdef USE_ANIMATIONS
+		/* The wireframe is XORed onto the screen while the window is
+		 * still mapped, so every line inverts the pixels behind it. */
+		if (getAnimationGeometry(wwin, &ix, &iy, &iw, &ih))
+			animateResize(wwin->screen_ptr, wwin->frame_x, wwin->frame_y,
+				      wwin->frame->core->width, wwin->frame->core->height, ix, iy, iw, ih);
+#endif
 		wWindowUnmap(wwin);
-		/* let all Expose events arrive so that we can repaint
-		 * something before the animation starts (and the server is grabbed) */
 		XSync(dpy, 0);
 
 		if (wPreferences.disable_miniwindows || wwin->flags.net_handle_icon)
@@ -1528,11 +1533,6 @@ void wIconifyWindow(WWindow *wwin)
 			wClientSetState(wwin, IconicState, wwin->icon->icon_win);
 
 		flushExpose();
-#ifdef USE_ANIMATIONS
-		if (getAnimationGeometry(wwin, &ix, &iy, &iw, &ih))
-			animateResize(wwin->screen_ptr, wwin->frame_x, wwin->frame_y,
-				      wwin->frame->core->width, wwin->frame->core->height, ix, iy, iw, ih);
-#endif
 	}
 
 	wwin->flags.skip_next_animation = 0;
@@ -1724,12 +1724,10 @@ static void hideWindow(WIcon *icon, int icon_x, int icon_y, WWindow *wwin, int a
 		wHideInspectorForWindow(wwin);
 
 	wwin->flags.hidden = 1;
-	wWindowUnmap(wwin);
-
-	wClientSetState(wwin, IconicState, icon->icon_win);
-	flushExpose();
 
 #ifdef USE_ANIMATIONS
+	/* Animated before the unmap for the same reason as in wIconifyWindow:
+	 * the XORed wireframe inverts the window it shrinks away from. */
 	if (!wwin->screen_ptr->flags.startup && !wPreferences.no_animations &&
 	    !wwin->flags.skip_next_animation && animate) {
 		animateResize(wwin->screen_ptr, wwin->frame_x, wwin->frame_y,
@@ -1742,6 +1740,9 @@ static void hideWindow(WIcon *icon, int icon_x, int icon_y, WWindow *wwin, int a
 	(void) icon_y;
 	(void) animate;
 #endif
+	wWindowUnmap(wwin);
+	wClientSetState(wwin, IconicState, icon->icon_win);
+	flushExpose();
 	wwin->flags.skip_next_animation = 0;
 
 	WMPostNotificationName(WMNChangedState, wwin, "hide");
