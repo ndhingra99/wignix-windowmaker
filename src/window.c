@@ -3240,8 +3240,8 @@ static void windowIconifyClick(WCoreWindow *sender, void *data, XEvent *event)
 	if (event->xbutton.button < Button1 || event->xbutton.button > Button3)
 		return;
 
-	/* WigNix: the left titlebar button grows the window into the free space
-	 * around it (Maximus) and restores a maximized window; a double click on
+	/* WigNix: the left titlebar button maximizes, filling the free space
+	 * around the window, and restores a maximized window; a double click on
 	 * the titlebar miniaturizes instead. Control-click or the right button
 	 * still hide the whole application. */
 	{
@@ -3254,7 +3254,7 @@ static void windowIconifyClick(WCoreWindow *sender, void *data, XEvent *event)
 			if (wwin->flags.maximized)
 				wUnmaximizeWindow(wwin);
 			else
-				wMaximizeWindow(wwin, MAX_MAXIMUS, wGetHeadForWindow(wwin));
+				wMaximizeWindow(wwin, MAX_VERTICAL | MAX_HORIZONTAL, wGetHeadForWindow(wwin));
 		}
 	}
 }

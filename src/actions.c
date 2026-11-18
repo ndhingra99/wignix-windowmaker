@@ -370,6 +370,7 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 	unsigned int maximus_height = 0;
 	WArea usableArea, totalArea;
 	Bool has_border = 1;
+	Bool fill_free;
 	int adj_size;
 	WScreen *scr = wwin->screen_ptr;
 
@@ -406,6 +407,8 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 	/* Only save directions, not kbd or xinerama hints */
 	directions &= (MAX_HORIZONTAL | MAX_VERTICAL | MAX_LEFTHALF | MAX_RIGHTHALF | MAX_TOPHALF | MAX_BOTTOMHALF | MAX_MAXIMUS | MAX_CENTRAL);
 
+	fill_free = directions == (MAX_HORIZONTAL | MAX_VERTICAL) && !WFLAGP(wwin, full_maximize);
+
 	if (WFLAGP(wwin, full_maximize))
 		usableArea = totalArea;
 	half_scr_width = (usableArea.x2 - usableArea.x1)/2;
@@ -430,6 +433,15 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 		wwin->maximus_x = new_x;
 		wwin->maximus_y = new_y;
 		wwin->flags.old_maximized |= MAX_MAXIMUS;
+	} else if (fill_free) {
+		/* WigNix: a full maximize fills the free space around the window
+		 * (the Maximus geometry) and stays a vertical and horizontal
+		 * maximize for toggling, restoring and _NET_WM_STATE. */
+		find_Maximus_geometry(wwin, usableArea, &maximus_x, &maximus_y, &maximus_width, &maximus_height);
+		new_width = maximus_width - adj_size;
+		new_height = maximus_height - adj_size;
+		new_x = maximus_x;
+		new_y = maximus_y;
 	} else {
 		/* center the window if can fit, if not sticking it to the screen edges */
 		if (directions & MAX_CENTRAL) {
@@ -499,7 +511,7 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 		}
 	}
 
-	if (!WFLAGP(wwin, full_maximize) && !(directions == MAX_MAXIMUS || directions == MAX_HORIZONTAL))
+	if (!WFLAGP(wwin, full_maximize) && !fill_free && !(directions == MAX_MAXIMUS || directions == MAX_HORIZONTAL))
 		new_height -= wwin->frame->top_width + wwin->frame->bottom_width;
 
 	/* set maximization state */
