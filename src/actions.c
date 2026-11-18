@@ -795,50 +795,152 @@ void moveBetweenHeads(WWindow *wwin, int direction)
 	return;
 }
 
-/* the window boundary coordinates */
+/* the window boundary coordinates: the outer edges of the frame, border
+ * included; right and bottom are exclusive */
 typedef struct {
 	int left;
 	int right;
 	int bottom;
 	int top;
-	int width;
-	int height;
 } win_coords;
+
+static int frame_border(WWindow *wwin)
+{
+	return HAS_BORDER(wwin) ? wwin->screen_ptr->frame_border_width : 0;
+}
 
 static void set_window_coords(WWindow *wwin, win_coords *obs)
 {
+	int bd = frame_border(wwin);
+
 	obs->left = wwin->frame_x;
 	obs->top = wwin->frame_y;
-	obs->width = wwin->frame->core->width;
-	obs->height = wwin->frame->core->height;
-	obs->bottom = obs->top + obs->height;
-	obs->right = obs->left + obs->width;
+	obs->right = obs->left + wwin->frame->core->width + 2 * bd;
+	obs->bottom = obs->top + wwin->frame->core->height + 2 * bd;
+}
+
+static int overlap_len(int a1, int a2, int b1, int b2)
+{
+	int lo = WMAX(a1, b1), hi = WMIN(a2, b2);
+
+	return hi > lo ? hi - lo : 0;
+}
+
+/* The windows a Maximus window must not cover: mapped, on this workspace,
+ * neither miniaturized nor hidden. */
+static Bool is_obstruction(WWindow *wwin, WWindow *tmp)
+{
+	WScreen *scr = wwin->screen_ptr;
+
+	if (tmp == wwin || !tmp->frame || !tmp->flags.mapped)
+		return False;
+	if (tmp->flags.miniaturized || tmp->flags.hidden)
+		return False;
+	if (tmp->frame->workspace != scr->current_workspace && !IS_OMNIPRESENT(tmp))
+		return False;
+	return True;
 }
 
 /*
  * Maximus: tiled maximization (maximize without overlapping other windows)
  *
- * The original window 'orig' will be maximized to new coordinates 'new'.
- * The windows obstructing the maximization of 'orig' are denoted 'obs'.
+ * WigNix: the window 'orig' grows into the free space around it, bounded by
+ * the usable area and by the windows 'obs' around it; a window touching an
+ * edge bounds it there. A window already overlapping 'orig' is first cleared
+ * by pulling in the edge of 'orig' that loses the fewest pixels, as long as
+ * at least half of the window's width or height stays. When no edge can be
+ * pulled in that far (the window sits mostly or wholly over the other one,
+ * as over a maximized window) the other window is ignored and 'orig' grows
+ * over it. 'orig' then grows up and down first, then left and right across
+ * its new height.
  */
 static void find_Maximus_geometry(WWindow *wwin, WArea usableArea, int *new_x, int *new_y,
 				  unsigned int *new_width, unsigned int *new_height)
 {
+	WScreen *scr = wwin->screen_ptr;
 	WWindow *tmp;
-	short int tbar_height_0 = 0, rbar_height_0 = 0, bd_width_0 = 0;
-	short int adjust_height;
-	int x_intsect, y_intsect;
-	/* the obstructing, original and new windows */
-	win_coords obs, orig, new;
+	int bd = frame_border(wwin);
+	int deco = wwin->frame->top_width + wwin->frame->bottom_width;
+	int count = 0, i;
+	int orig_w, orig_h;
+	win_coords *obs;
+	Bool *ignored;
+	/* the original and new windows */
+	win_coords orig, new;
 
-	/* set the original coordinate positions of the window to be Maximumized */
+	/* set the original coordinate positions of the window to be Maximusized */
 	if (wwin->flags.maximized) {
 		/* window is already maximized; consider original geometry */
-		remember_geometry(wwin, &orig.left, &orig.top, &orig.width, &orig.height);
-		orig.bottom = orig.top + orig.height;
-		orig.right = orig.left + orig.width;
+		int x, y, w, h;
+
+		remember_geometry(wwin, &x, &y, &w, &h);
+		orig.left = x;
+		orig.top = y;
+		orig.right = x + w + 2 * bd;
+		orig.bottom = y + h + deco + 2 * bd;
 	} else
 		set_window_coords(wwin, &orig);
+	orig_w = orig.right - orig.left;
+	orig_h = orig.bottom - orig.top;
+
+	for (tmp = scr->focused_window; tmp; tmp = tmp->prev)
+		if (is_obstruction(wwin, tmp))
+			count++;
+	obs = wmalloc(sizeof(win_coords) * (count + 1));
+	ignored = wmalloc(sizeof(Bool) * (count + 1));
+	count = 0;
+	for (tmp = scr->focused_window; tmp; tmp = tmp->prev)
+		if (is_obstruction(wwin, tmp))
+			set_window_coords(tmp, &obs[count++]);
+
+	/* clear the windows that already overlap */
+	for (i = 0; i < count; i++) {
+		win_coords *o = &obs[i];
+		int best = -1, cut, which = 0;
+
+		if (!overlap_len(orig.left, orig.right, o->left, o->right)
+		    || !overlap_len(orig.top, orig.bottom, o->top, o->bottom))
+			continue;
+
+		/* 1 = top down to o->bottom, 2 = bottom up to o->top,
+		 * 3 = left over to o->right, 4 = right back to o->left */
+		if (o->bottom < orig.bottom && 2 * (orig.bottom - o->bottom) >= orig_h) {
+			cut = o->bottom - orig.top;
+			if (best < 0 || cut < best)
+				best = cut, which = 1;
+		}
+		if (o->top > orig.top && 2 * (o->top - orig.top) >= orig_h) {
+			cut = orig.bottom - o->top;
+			if (best < 0 || cut < best)
+				best = cut, which = 2;
+		}
+		if (o->right < orig.right && 2 * (orig.right - o->right) >= orig_w) {
+			cut = o->right - orig.left;
+			if (best < 0 || cut < best)
+				best = cut, which = 3;
+		}
+		if (o->left > orig.left && 2 * (o->left - orig.left) >= orig_w) {
+			cut = orig.right - o->left;
+			if (best < 0 || cut < best)
+				best = cut, which = 4;
+		}
+
+		switch (which) {
+		case 1: orig.top = o->bottom; break;
+		case 2: orig.bottom = o->top; break;
+		case 3: orig.left = o->right; break;
+		case 4: orig.right = o->left; break;
+		default: ignored[i] = True; break;
+		}
+	}
+
+	/* a window ignored above may no longer overlap after later cuts; it
+	 * bounds the growth like any other window then */
+	for (i = 0; i < count; i++)
+		if (ignored[i]
+		    && (!overlap_len(orig.left, orig.right, obs[i].left, obs[i].right)
+			|| !overlap_len(orig.top, orig.bottom, obs[i].top, obs[i].bottom)))
+			ignored[i] = False;
 
 	/* Try to fully maximize first, then readjust later */
 	new.left    = usableArea.x1;
@@ -846,79 +948,39 @@ static void find_Maximus_geometry(WWindow *wwin, WArea usableArea, int *new_x, i
 	new.top     = usableArea.y1;
 	new.bottom  = usableArea.y2;
 
-	if (HAS_TITLEBAR(wwin))
-		tbar_height_0 = TITLEBAR_HEIGHT;
-	if (HAS_RESIZEBAR(wwin))
-		rbar_height_0 = RESIZEBAR_HEIGHT;
-	if (HAS_BORDER(wwin))
-		bd_width_0 = wwin->screen_ptr->frame_border_width;
+	/* grow up and down */
+	for (i = 0; i < count; i++) {
+		win_coords *o = &obs[i];
 
-	/* the length to be subtracted if the window has titlebar, etc */
-	adjust_height = tbar_height_0 + 2 * bd_width_0 + rbar_height_0;
-
-	tmp = wwin;
-	/* The focused window is always the last in the list */
-	while (tmp->prev) {
-		/* ignore windows in other workspaces etc */
-		if (tmp->prev->frame->workspace != wwin->screen_ptr->current_workspace
-		    || tmp->prev->flags.miniaturized || tmp->prev->flags.hidden) {
-			tmp = tmp->prev;
+		if (ignored[i] || !overlap_len(orig.left, orig.right, o->left, o->right))
 			continue;
-		}
-		tmp = tmp->prev;
-
-		/* Set the coordinates of obstructing window */
-		set_window_coords(tmp, &obs);
-
-		/* Try to maximize in the y direction first */
-		x_intsect = calcIntersectionLength(orig.left, orig.width, obs.left, obs.width);
-		if (x_intsect != 0) {
-			/* TODO: Consider the case when coords are equal */
-			if (obs.bottom < orig.top && obs.bottom > new.top) {
-				/* w_0 is below the bottom of w_j */
-				new.top = obs.bottom + 1;
-			}
-			if (orig.bottom < obs.top && obs.top < new.bottom) {
-				/* The bottom of w_0 is above the top of w_j */
-				new.bottom = obs.top - 1;
-			}
-		}
+		if (o->bottom <= orig.top && o->bottom > new.top)
+			new.top = o->bottom;
+		if (o->top >= orig.bottom && o->top < new.bottom)
+			new.bottom = o->top;
 	}
 
-	tmp = wwin;
-	while (tmp->prev) {
-		if (tmp->prev->frame->workspace != wwin->screen_ptr->current_workspace
-		    || tmp->prev->flags.miniaturized || tmp->prev->flags.hidden) {
-			tmp = tmp->prev;
+	/* grow left and right across the new height */
+	for (i = 0; i < count; i++) {
+		win_coords *o = &obs[i];
+
+		if (ignored[i] || !overlap_len(new.top, new.bottom, o->top, o->bottom))
 			continue;
-		}
-		tmp = tmp->prev;
-
-		set_window_coords(tmp, &obs);
-
-		/*
-		 * Use the new.top and new.height instead of original values
-		 * as they may have different intersections with the obstructing windows
-		 */
-		new.height = new.bottom - new.top - adjust_height;
-		y_intsect = calcIntersectionLength(new.top, new.height, obs.top, obs.height);
-		if (y_intsect != 0) {
-			if (obs.right < orig.left && obs.right > new.left) {
-				/* w_0 is completely to the right of w_j */
-				new.left = obs.right + 1;
-			}
-			if (orig.right < obs.left && obs.left < new.right) {
-				/* w_0 is completely to the left of w_j */
-				new.right = obs.left - 1;
-			}
-		}
+		if (o->right <= orig.left && o->right > new.left)
+			new.left = o->right;
+		if (o->left >= orig.right && o->left < new.right)
+			new.right = o->left;
 	}
 
+	wfree(obs);
+	wfree(ignored);
+
+	/* wMaximizeWindow takes the border off both; the title and resize bars
+	 * come off the height here */
 	*new_x = new.left;
 	*new_y = new.top;
-	/* xcalc needs -7 here, but other apps don't */
-	*new_height = new.bottom - new.top - adjust_height - 1;
 	*new_width = new.right - new.left;
+	*new_height = new.bottom - new.top - deco;
 }
 
 void wUnmaximizeWindow(WWindow *wwin)
