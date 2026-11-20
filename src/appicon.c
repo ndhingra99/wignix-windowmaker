@@ -722,11 +722,15 @@ static void iconDblClick(WObjDescriptor *desc, XEvent *event)
 
 	/* WigNix: a plain click on an application's icon in the row acts on
 	 * the application's windows in this workspace. Miniaturized windows
-	 * come back one per click, the one miniaturized longest ago first; with
-	 * none miniaturized, the window used last takes the focus. */
+	 * come back one per click, the one miniaturized longest ago first. With
+	 * none miniaturized, a click focuses the window used last; while one of
+	 * the application's windows has the focus, a click focuses the one used
+	 * longest ago instead, so repeated clicks cycle through every window in
+	 * a fixed order. */
 	if (aicon->icon->icon_win == None && !aicon->docked && event->xbutton.button == Button1
 	    && !(event->xbutton.state & (ShiftMask | MOD_MASK))) {
-		WWindow *w, *pick = NULL;
+		WWindow *w, *pick = NULL, *focused = scr->focused_window;
+		Bool cycle;
 
 #define IN_THIS_WORKSPACE(w) ((w)->main_window == aicon->main_window && (w)->frame \
 	&& ((w)->frame->workspace == scr->current_workspace || IS_OMNIPRESENT(w)))
@@ -734,10 +738,13 @@ static void iconDblClick(WObjDescriptor *desc, XEvent *event)
 			if (IN_THIS_WORKSPACE(w) && w->flags.miniaturized
 			    && (!pick || w->iconify_order < pick->iconify_order))
 				pick = w;
-		/* the focus list runs from the window used last backwards */
-		for (w = scr->focused_window; w && !pick; w = w->prev)
-			if (IN_THIS_WORKSPACE(w) && !WFLAGP(w, no_focusable))
-				pick = w;
+		/* the focus list runs from the window used last backwards; focusing
+		 * a window moves it to the front */
+		cycle = focused && focused->flags.focused && IN_THIS_WORKSPACE(focused);
+		if (!pick)
+			for (w = scr->focused_window; w && (cycle || !pick); w = w->prev)
+				if (IN_THIS_WORKSPACE(w) && !WFLAGP(w, no_focusable))
+					pick = w;
 #undef IN_THIS_WORKSPACE
 		if (pick)
 			wMakeWindowVisible(pick);

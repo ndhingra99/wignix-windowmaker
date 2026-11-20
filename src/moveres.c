@@ -1874,24 +1874,41 @@ int wMouseMoveWindow(WWindow * wwin, XEvent * ev)
 			} else if (abs(ev->xmotion.x_root - event.xmotion.x_root) >= MOVE_THRESHOLD
 				   || abs(ev->xmotion.y_root - event.xmotion.y_root) >= MOVE_THRESHOLD) {
 
-				if (wwin->flags.maximized) {
-					if (wPreferences.drag_maximized_window == DRAGMAX_RESTORE) {
-						float titlebar_ratio;
-						int new_x, new_y;
+				/* WigNix: dragging a maximized window un-maximizes it into a
+				 * 900x900 frame, title bar to resize bar, keeping the pointer
+				 * at the same fraction of the title bar's width. The frame
+				 * is smaller where the size hints or the usable area say so. */
+				if (wwin->flags.maximized && IS_RESIZABLE(wwin)) {
+					int bd = HAS_BORDER(wwin) ? 2 * scr->frame_border_width : 0;
+					int deco = wwin->frame->top_width + wwin->frame->bottom_width;
+					unsigned int new_w = 900 - bd, new_h = 900 - bd - deco;
+					float titlebar_ratio;
+					int new_x, new_y;
 
-						titlebar_ratio = (moveData.mouseX - wwin->frame_x) /
-							(float)wwin->frame->core->width;
-						new_y = wwin->frame_y;
-						wUnmaximizeWindow(wwin);
-						new_x = moveData.mouseX - titlebar_ratio * wwin->frame->core->width;
-						wWindowMove(wwin, new_x, new_y);
-						moveData.realX = moveData.calcX = wwin->frame_x;
-						moveData.realY = moveData.calcY = wwin->frame_y;
+					if (wwin->flags.shaded) {
+						wwin->flags.skip_next_animation = 1;
+						wUnshadeWindow(wwin);
 					}
-					if (wPreferences.drag_maximized_window == DRAGMAX_UNMAXIMIZE) {
-						wwin->flags.maximized = 0;
-						wwin->flags.old_maximized = 0;
-					}
+					titlebar_ratio = (moveData.mouseX - wwin->frame_x) /
+						(float)(wwin->frame->core->width + bd);
+					wWindowConstrainSize(wwin, &new_w, &new_h);
+					new_x = moveData.mouseX - titlebar_ratio * (new_w + bd);
+					new_y = wwin->frame_y;
+
+					wwin->flags.maximized = 0;
+					wwin->flags.old_maximized = 0;
+					wWindowConfigure(wwin, new_x, new_y, new_w, new_h);
+					wWindowSynthConfigureNotify(wwin);
+					WMPostNotificationName(WMNChangedState, wwin, "maximize");
+
+					moveData.realX = moveData.calcX = wwin->frame_x;
+					moveData.realY = moveData.calcY = wwin->frame_y;
+					moveData.winWidth = wwin->frame->core->width
+						+ (HAS_BORDER_WITH_SELECT(wwin) ? 2 * scr->frame_border_width : 0);
+					moveData.winHeight = wwin->frame->core->height
+						+ (HAS_BORDER_WITH_SELECT(wwin) ? 2 * scr->frame_border_width : 0);
+					if (moveData.topList)
+						updateMoveData(wwin, &moveData);
 				}
 
 				XChangeActivePointerGrab(dpy, ButtonMotionMask
