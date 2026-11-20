@@ -1758,6 +1758,9 @@ Bool wNETWMProcessClientMessage(XClientMessageEvent *event)
 		 * ordinary move or resize from where the pointer is. */
 		long direction = event->data.l[2];
 		XEvent ev;
+		Window junk_win;
+		int junk, px, py;
+		unsigned int buttons, button;
 
 		if (direction == _NET_WM_MOVERESIZE_CANCEL)
 			return True;
@@ -1773,6 +1776,31 @@ Bool wNETWMProcessClientMessage(XClientMessageEvent *event)
 		if (direction != _NET_WM_MOVERESIZE_MOVE && WFLAGP(wwin, no_resizable))
 			return True;
 
+		if (XGrabPointer(dpy, wwin->screen_ptr->root_win, False,
+				 ButtonMotionMask | ButtonReleaseMask | ButtonPressMask,
+				 GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess)
+			return True;
+
+		/* The move or resize ends on the release of the button that drives
+		 * it. Clients may send 0 for that button (Chromium always does), and
+		 * the user may already have let go before the grab above, with the
+		 * release delivered to the client. With the grab held, the pointer's
+		 * real button state decides: the named button if it is down, else
+		 * the lowest button down; with none down there is nothing to drag. */
+		if (!XQueryPointer(dpy, wwin->screen_ptr->root_win, &junk_win, &junk_win,
+				   &px, &py, &junk, &junk, &buttons))
+			buttons = 0;
+		button = event->data.l[3];
+		if (button < Button1 || button > Button5 || !(buttons & (Button1Mask << (button - Button1)))) {
+			for (button = Button1; button <= Button5; button++)
+				if (buttons & (Button1Mask << (button - Button1)))
+					break;
+		}
+		if (button > Button5) {
+			XUngrabPointer(dpy, CurrentTime);
+			return True;
+		}
+
 		memset(&ev, 0, sizeof(ev));
 		ev.type = ButtonPress;
 		ev.xbutton.display = dpy;
@@ -1780,12 +1808,8 @@ Bool wNETWMProcessClientMessage(XClientMessageEvent *event)
 		ev.xbutton.root = wwin->screen_ptr->root_win;
 		ev.xbutton.x_root = event->data.l[0];
 		ev.xbutton.y_root = event->data.l[1];
-		ev.xbutton.button = event->data.l[3];
+		ev.xbutton.button = button;
 		ev.xbutton.time = w_global.timestamp.last_event;
-		if (XGrabPointer(dpy, wwin->screen_ptr->root_win, False,
-				 ButtonMotionMask | ButtonReleaseMask | ButtonPressMask,
-				 GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess)
-			return True;
 		if (direction == _NET_WM_MOVERESIZE_MOVE)
 			wMouseMoveWindow(wwin, &ev);
 		else
