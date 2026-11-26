@@ -93,16 +93,16 @@ Credits
 -------
 
 User interface design, programming and a few icons:
-    Alfredo K. Kojima <kojima@windowmaker.info>
+    Alfredo K. Kojima
 
 Additional programming:
-    James Thompson <jamest@math.ksu.edu>
-    Dan Pascu <dan@windowmaker.info>
-    ]d <id@windowmaker.info>
+    James Thompson
+    Dan Pascu
+    ]d
 
 Icon and image artwork:
-    Jesse Kaufman <glandix@linuxfreak.com>
-    Marco van Hylckama Vlieg <marco@windowmaker.info>
+    Jesse Kaufman
+    Marco van Hylckama Vlieg
     See details in README in tiff/ directory
 
 WindowMaker
@@ -116,6 +116,7 @@ http://windowmaker.info and download it at ftp://ftp.windowmaker.info
 Contact
 -------
 
-Send comments and bug reports to kojima@windowmaker.info
-Use the WindowMaker BUGFORM to report bugs.
+WigNix Window Maker is a fork of Window Maker maintained by
+Neel Dhingra <git@wignix.net>. Send comments and bug reports about the
+fork to the fork maintainer.
 
