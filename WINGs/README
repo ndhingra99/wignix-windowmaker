@@ -25,8 +25,8 @@ workaround some of its limitations, although you'll probably be able to
 write something like a trivial tic-tac-toe game without knowing much Xlib.
 
    Some of its functions are designed to support the Window Maker window
-manager (see http://windowmaker.info) In fact, its primary role is to
-support Window Maker. All other uses of it are just an added bonus.
+manager. In fact, its primary role is to support Window Maker. All other
+uses of it are just an added bonus.
 
    It will help you to understand the API if you read the ApplicationKit
 reference manual, distributed as a PDF by Apple. The function names,
