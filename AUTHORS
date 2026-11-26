@@ -1,3 +1,13 @@
+WigNix fork
+===========
+
+Neel Dhingra <git@wignix.net>
+Maintains WigNix Window Maker, the fork of Window Maker shipped with the
+WigNix OS.
+
+Original Window Maker
+=====================
+
 Information about locale translators is at src/po/README and
 Library/WindowMaker/README
 
